@@ -5,7 +5,9 @@ from pydrake.solvers.mathematicalprogram import MathematicalProgram, Solve
 from pydrake.trajectories import PiecewisePolynomial
 from quadrotor2d import Quadrotor2D, Quadrotor2DVisualizer
 
-from RRT_py2 import *
+from scipy.interpolate import make_interp_spline, BSpline
+
+from RRT_py2 import * # rrt() and plotGoalPath()
 import time
 
 ###
@@ -21,7 +23,7 @@ def printInputs(u1,u2):
     '''
     return "u: [" + '{0:.3g}'.format(u1) + "," + '{0:.3g}'.format(u2) + "]"
 
-def calculateFuel(u):
+def calculateFuel(u,dt):
     ''' u is a list of u1+u2 scalars
     '''
     fuel = 0
@@ -126,8 +128,8 @@ class PPTrajectory():
 
 environment = Environment('superbug.yaml')
 
-radius = 0.6; 
-bounds = (-2, -3, 12, 8);
+radius = 0.6
+bounds = (-2, -3, 12, 8) # this is (minx, miny, maxX,maxY)
 start = (0, 0)
 x = 10.5 # x pos of goal
 y = 5.5  # y pos of goal
@@ -135,7 +137,7 @@ d = 0.5  # half side length of goal region square
 goal_reg = [(x-d,y-d), (x-d,y+d), (x+d,y+d), (x+d,y-d)]
 goal_region = Polygon(goal_reg)
 
-
+## 
 
 
 print("Finding path with RRT...")
@@ -155,7 +157,8 @@ drone = Quadrotor2D()
 
 if(True):
     
-    tf = len(path); dots = 3*tf
+    tf = len(path)
+    dots = 5*tf
     zpp = PPTrajectory(sample_times=np.linspace(0, tf, dots), num_vars=2,
                        degree=5, continuity_degree=4)
 
@@ -209,22 +212,13 @@ if(True):
     print "...Done!"
 
     # Plot quadcopter and trajectory
+    num_visualize = int(dots/3)+1
     num_sample = int(dots)+1
     dt = tf / float(num_sample)
-    print tf
-    print num_sample
-    fig, ax = plt.subplots()
-    for t in np.linspace(0, tf, (num_sample)):
-        x = zpp.eval(t)
-        xddot = zpp.eval(t, 2)
-        theta = np.arctan2(-xddot[0], (xddot[1] + 9.81))
-        v = Quadrotor2DVisualizer(ax=ax)
-        context = v.CreateDefaultContext()
-        
-        context.FixInputPort(0, [x[0], x[1], theta, 0, 0, 0])
-        v.draw(context)
 
-    # trying to extract u
+    ###
+    ### Extract u
+    ###
     # method two: use eq 20 and 21 only?
 
     # method one: fully mathematical according to the one that Russ started explaining about. Fully deriving thetaddot
@@ -234,9 +228,11 @@ if(True):
     r = drone.length # TODO: possibly length / 2, but article seems to be r
     m = drone.mass 
     u = []
+    xplot = []
+    yplot = []
     for t in np.linspace(0, tf, (num_sample)):
         x       = zpp.eval(t)[0]
-        y       = zpp.eval(t)[1]
+        y       = zpp.eval(t)[1]        
         xdot    = zpp.eval(t, 1)[0]
         ydot    = zpp.eval(t, 1)[1]
         xddot   = zpp.eval(t, 2)[0]
@@ -251,10 +247,8 @@ if(True):
         part0 = yddot + g
         part1 = -xddddot * ( part0 ) + xddot*yddddot
         part2 = 2 * ydddot * ( xddot*ydddot - xdddot*part0)
-
         ## Adding together, trying to avoid dividing by zero
         rhs = (part1 * part0 - part2) / (part0 + 10**-3)**3
-
         thetaddot = np.cos(theta)**2 * rhs # -2 * thetadot * tan(theta) ignored
 
         # using equation for m * yddot since the angles are gonna be far from cos(theta) = 0. alternative, and more flexible, could be to change the procedure depending on if theta is close or far from 0 or pi
@@ -262,11 +256,26 @@ if(True):
         u1 = 0.5 * ( I / r * thetaddot + ((m * part0) / np.cos(theta)) )
         u2 = ((m * part0)/np.cos(theta)) - u1
         u.append(u1+u2)
-        print printStates(x,y), "\t", printInputs(u1,u2)
+        #print printStates(x,y), "\t", printStates(xdot,ydot), "\t" , printInputs(u1,u2)
+
+        xplot.append(x)
+        yplot.append(y)
 
 
-    print calculateFuel(u)
+    print "Fuel: ", calculateFuel(u,dt)
 
+    ###
+    ### Russ' way of plotting the Quadcopter
+    ###
+    fig, ax = plt.subplots()
+    for t in np.linspace(0, tf, (num_visualize)):
+        x = zpp.eval(t)
+        xddot = zpp.eval(t, 2)
+        theta = np.arctan2(-xddot[0], (xddot[1] + 9.81))
+        v = Quadrotor2DVisualizer(ax=ax)
+        context = v.CreateDefaultContext()
+        context.FixInputPort(0, [x[0], x[1], theta, 0, 0, 0])
+        v.draw(context)
 
     # Draw the actual obstacles from given environment
     if True:
@@ -280,15 +289,26 @@ if(True):
     # finish 
     ax.set_xlim([bounds[0], bounds[2]])
     ax.set_ylim([bounds[1], bounds[3]])
-    ax.set_title('Trajectory')  
+    ax.set_title('Trajectory found from RRT + differential flatness')  
 
 # Finish up
-plotGoalPath(given_path,radius,ax,goal_region)
+
+given_path = zip(xplot,yplot)
+plotGoalPath(given_path,radius*0.8,ax,goal_region)
 plt.xlabel('x')
 plt.ylabel('z')
 plt.xlim(bounds[0], bounds[2])
 plt.ylim(bounds[1], bounds[3])
 plt.legend()
+
+# TODO: This could be much cleaner
+if False:
+  for i in range(len(xplot)-1):
+    pt1 = (xplot[i],yplot[i])
+    pt2 = (xplot[i+1],yplot[i+1])
+    line = LineString([pt1, pt2])
+    plot_line_mine(ax, line)
+
 plt.show()
 # plt.savefig('trajectory.jpg') # just stores a white picture lol
 

@@ -111,16 +111,16 @@ def plotGoalPath(path, radius, ax, end_region):
 
     Purpose: is meant to plot RRT tree on drone
     '''
-    plot_poly(ax, end_region,'green', alpha=0.2)
+    plot_poly(ax, end_region,'green', alpha=0.3)
 
     plot_poly(ax, Point(path[0]).buffer(radius/2, resolution=3),'blue',alpha=0.3)
 
     for i in range(0,len(path)-1):
         line = LineString([path[i], path[i+1]])
-        #plot_line_mine(ax, line)
+        # plot_line_mine(ax, line)
         
         expanded_line = line.buffer(radius, resolution=3)
-        plot_poly(ax, expanded_line, 'green', alpha=0.05)
+        plot_poly(ax, expanded_line, 'green', alpha=0.025)
         
     # plotting last node in goalPath and setting title to format in task
     # plot_poly(ax, Point(path[-1]).buffer(radius/2, resolution=3),'blue')
