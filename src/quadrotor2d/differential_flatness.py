@@ -1,13 +1,39 @@
-
 import matplotlib.pyplot as plt
 import math
 import numpy as np
-
 from pydrake.solvers.mathematicalprogram import MathematicalProgram, Solve
 from pydrake.trajectories import PiecewisePolynomial
-
 from quadrotor2d import Quadrotor2D, Quadrotor2DVisualizer
 
+from RRT_py2 import *
+import time
+
+###
+### Simen's implementations
+###
+def printStates(x,y):
+    ''' Both inputs are scalars
+    '''
+    return "q: [" + '{0:.2g}'.format(x) + "," + '{0:.2g}'.format(y) + "]"
+
+def printInputs(u1,u2):
+    ''' Both inputs are scalars
+    '''
+    return "u: [" + '{0:.3g}'.format(u1) + "," + '{0:.3g}'.format(u2) + "]"
+
+def calculateFuel(u):
+    ''' u is a list of u1+u2 scalars
+    '''
+    fuel = 0
+    for i in range(len(u) - 1):
+        f = ((max(u[i],u[i+1]) + 0.5 * np.fabs(u[i+1] - u[i])) * dt)**2
+        fuel += f**2
+    return fuel
+
+
+###
+### Main code
+###
 
 # TODO(russt): Use drake.trajectories.PiecewisePolynomialTrajectory
 #  instead (currently missing python bindings for the required constructor),
@@ -85,75 +111,228 @@ class PPTrajectory():
         assert(self.result.is_success())
 
 
-tf = 3
-zpp = PPTrajectory(sample_times=np.linspace(0, tf, 6),
-                   num_vars=2,
-                   degree=5,
-                   continuity_degree=4)
-zpp.add_constraint(t=0, derivative_order=0, lb=[0, 0])
-zpp.add_constraint(t=0, derivative_order=1, lb=[0, 0])
-zpp.add_constraint(t=0, derivative_order=2, lb=[0, 0])
-zpp.add_constraint(t=1, derivative_order=0, lb=[2, 1.5])
-zpp.add_constraint(t=2, derivative_order=0, lb=[4, 1])
-zpp.add_constraint(t=tf, derivative_order=0, lb=[6, 0])
-zpp.add_constraint(t=tf, derivative_order=1, lb=[0, 0])
-zpp.add_constraint(t=tf, derivative_order=2, lb=[0, 0])
-zpp.generate()
+#########################################
+#########################################
+#########################################
+#########################################
+#########################################
+# MY CONCATENATION OF RRT AND DIFF FLAT #
+#########################################
+#########################################
+#########################################
+#########################################
+#########################################
 
 
-if False:  # Useful for debugging
-    t = np.linspace(0, tf, 100)
-    z = np.zeros((2, len(t)))
-    knots = np.zeros((2, len(zpp.sample_times)))
-    fig, ax = plt.subplots(zpp.degree+1, 1)
-    for deg in range(zpp.degree+1):
-        for i in range(len(t)):
-            z[:, i] = zpp.eval(t[i], deg)
-        for i in range(len(zpp.sample_times)):
-            knots[:, i] = zpp.eval(zpp.sample_times[i], deg)
-        ax[deg].plot(t, z.transpose())
-        ax[deg].plot(zpp.sample_times, knots.transpose(), '.')
-        ax[deg].set_xlabel('t (sec)')
-        ax[deg].set_ylabel('z deriv ' + str(deg))
-    plt.show()
+environment = Environment('superbug.yaml')
 
-fig, ax = plt.subplots()
-
-t = np.linspace(0, tf, 100)
-z = np.zeros((2, len(t)))
+radius = 0.6; 
+bounds = (-2, -3, 12, 8);
+start = (0, 0)
+x = 10.5 # x pos of goal
+y = 5.5  # y pos of goal
+d = 0.5  # half side length of goal region square
+goal_reg = [(x-d,y-d), (x-d,y+d), (x+d,y+d), (x+d,y-d)]
+goal_region = Polygon(goal_reg)
 
 
-for i in range(len(t)):
-    z[:, i] = zpp.eval(t[i])
-ax.plot(z[0, :], z[1, :])
 
-for t in np.linspace(0, tf, 7):
-    x = zpp.eval(t)
-    xddot = zpp.eval(t, 2)
-    theta = np.arctan2(-xddot[0], (xddot[1] + 9.81))
-    v = Quadrotor2DVisualizer(ax=ax)
-    context = v.CreateDefaultContext()
-    context.FixInputPort(0, [x[0], x[1], theta, 0, 0, 0])
-    v.draw(context)
 
-# Draw the (imaginary) obstacles
-ax.fill(2+np.array([-.1, -.1, .1, .1, -.1]),
-        1.25*np.array([0, 1, 1, 0, 0]),
-        facecolor='darkred',
-        edgecolor='k')
-ax.fill(2+np.array([-.1, -.1, .1, .1, -.1]),
-        1.75+1.25*np.array([0, 1, 1, 0, 0]),
-        facecolor='darkred',
-        edgecolor='k')
-ax.fill(4+np.array([-.1, -.1, .1, .1, -.1]),
-        .75*np.array([0, 1, 1, 0, 0]),
-        facecolor='darkred',
-        edgecolor='k')
-ax.fill(4+np.array([-.1, -.1, .1, .1, -.1]),
-        1.25+1.75*np.array([0, 1, 1, 0, 0]),
-        facecolor='darkred',
-        edgecolor='k')
-ax.set_xlim([-1, 7])
-ax.set_ylim([-.25, 3])
-ax.set_title('')
+print("Finding path with RRT...")
+# checking with big radius atm. Not changing var radius itself due to the plotting further down!
+path = rrt(bounds, environment, start, 2*radius, goal_region)
+print("...Done!")
+startpos = [start[0], start[1]]
+endpos = [x,y]
+given_path = [start] ## path given to quadcopter
+
+drone = Quadrotor2D()
+
+#########################################
+#########################################
+#########################################
+#########################################
+
+if(True):
+    
+    tf = len(path); dots = 3*tf
+    zpp = PPTrajectory(sample_times=np.linspace(0, tf, dots), num_vars=2,
+                       degree=5, continuity_degree=4)
+
+    # Add time as cont var. Have to add to self.coeffs also?  
+    k = 0; t = zpp.prog.NewContinuousVariables(1, "t_%d" % k)
+    t_over_time = t
+
+    # add time variables from t1 to tf-1. t0 shall be zero and t_f should be constrained
+    for k in range(1,tf):
+        t = zpp.prog.NewContinuousVariables(1, "t_%d" % k)
+        t_over_time = np.vstack((t_over_time, t))
+
+    ### Add constraint on t_0 = 0. Or set t=0 in add_constraint?
+    ### Add constraint on t_i-1 <= t_i. "<=" allows the path to be done early
+    ### Constrain final time instance to be == tf
+    # zpp.prog.AddLinearConstraint(t_over_time[-1][0] == tf)
+    # --- OR ---
+    # Constrain final time instance to be <= tf, and add cost on it
+    zpp.prog.AddLinearConstraint(t_over_time[0][0] == 0)
+    
+    timeslack = 0.01
+    for i in range(0,tf-1):
+        zpp.prog.AddLinearConstraint(t_over_time[i][0] <=\
+                                     t_over_time[i+1][0] + timeslack)
+
+    zpp.prog.AddLinearConstraint(t_over_time[-1][0] <= tf)
+    zpp.prog.AddQuadraticCost( (t_over_time[-1,0])**2 )
+
+    ### Add constraints on initial, visiting and end states + derivatices
+    zpp.add_constraint(t=0, derivative_order=0, lb=startpos)
+    zpp.add_constraint(t=0, derivative_order=1, lb=[0, 0])
+    zpp.add_constraint(t=0, derivative_order=2, lb=[0, 0])
+    
+    ## Add all spacial constraints along path
+    # Start at 1 since t = 0 is set. Give every second point (to avoid super strict path)
+    for i in range(1,tf,2): 
+        if(i != tf):
+            pos = path[i] # a tuple
+            given_path.append(pos)
+            zpp.add_constraint(t=i, derivative_order=0, lb=[pos[0], pos[1]])
+
+    zpp.add_constraint(t=tf, derivative_order=0, lb=endpos)
+    zpp.add_constraint(t=tf, derivative_order=1, lb=[0, 0])
+    zpp.add_constraint(t=tf, derivative_order=2, lb=[0, 0])
+
+    if(False):
+        print("Added all constraints. Sleeping 5 sek before solving diff flat")
+        time.sleep(5)
+    print "Solving differential flatness..."
+    zpp.generate()
+    print "...Done!"
+
+    # Plot quadcopter and trajectory
+    num_sample = int(dots)+1
+    dt = tf / float(num_sample)
+    print tf
+    print num_sample
+    fig, ax = plt.subplots()
+    for t in np.linspace(0, tf, (num_sample)):
+        x = zpp.eval(t)
+        xddot = zpp.eval(t, 2)
+        theta = np.arctan2(-xddot[0], (xddot[1] + 9.81))
+        v = Quadrotor2DVisualizer(ax=ax)
+        context = v.CreateDefaultContext()
+        
+        context.FixInputPort(0, [x[0], x[1], theta, 0, 0, 0])
+        v.draw(context)
+
+    # trying to extract u
+    # method two: use eq 20 and 21 only?
+
+    # method one: fully mathematical according to the one that Russ started explaining about. Fully deriving thetaddot
+    # -- simplified thetadot**2 * tan(theta) to be zero (both velocity and angle is small, so it is almost (small number)***3, which disappears)
+    g = drone.gravity
+    I = drone.inertia
+    r = drone.length # TODO: possibly length / 2, but article seems to be r
+    m = drone.mass 
+    u = []
+    for t in np.linspace(0, tf, (num_sample)):
+        x       = zpp.eval(t)[0]
+        y       = zpp.eval(t)[1]
+        xdot    = zpp.eval(t, 1)[0]
+        ydot    = zpp.eval(t, 1)[1]
+        xddot   = zpp.eval(t, 2)[0]
+        yddot   = zpp.eval(t, 2)[1]
+        xdddot  = zpp.eval(t, 3)[0]
+        ydddot  = zpp.eval(t, 3)[1]
+        xddddot = zpp.eval(t, 4)[0]
+        yddddot = zpp.eval(t, 4)[1]
+        theta   = np.arctan2(-xddot, (yddot + g))
+
+        # parts calculated from chapter 
+        part0 = yddot + g
+        part1 = -xddddot * ( part0 ) + xddot*yddddot
+        part2 = 2 * ydddot * ( xddot*ydddot - xdddot*part0)
+
+        ## Adding together, trying to avoid dividing by zero
+        rhs = (part1 * part0 - part2) / (part0 + 10**-3)**3
+
+        thetaddot = np.cos(theta)**2 * rhs # -2 * thetadot * tan(theta) ignored
+
+        # using equation for m * yddot since the angles are gonna be far from cos(theta) = 0. alternative, and more flexible, could be to change the procedure depending on if theta is close or far from 0 or pi
+
+        u1 = 0.5 * ( I / r * thetaddot + ((m * part0) / np.cos(theta)) )
+        u2 = ((m * part0)/np.cos(theta)) - u1
+        u.append(u1+u2)
+        print printStates(x,y), "\t", printInputs(u1,u2)
+
+
+    print calculateFuel(u)
+
+
+    # Draw the actual obstacles from given environment
+    if True:
+        for pt in environment.obstPoints:
+            a = []; b = []
+            for lt in pt:
+                a.append(lt[0])
+                b.append(lt[1])
+            ax.fill(a, b,facecolor='darkred', edgecolor='k') 
+
+    # finish 
+    ax.set_xlim([bounds[0], bounds[2]])
+    ax.set_ylim([bounds[1], bounds[3]])
+    ax.set_title('Trajectory')  
+
+# Finish up
+plotGoalPath(given_path,radius,ax,goal_region)
+plt.xlabel('x')
+plt.ylabel('z')
+plt.xlim(bounds[0], bounds[2])
+plt.ylim(bounds[1], bounds[3])
+plt.legend()
 plt.show()
+# plt.savefig('trajectory.jpg') # just stores a white picture lol
+
+
+###########################################
+###########################################
+###########################################
+###########################################
+###########################################
+
+import argparse
+
+from pydrake.systems.analysis import Simulator
+from pydrake.systems.controllers import LinearQuadraticRegulator
+from pydrake.systems.framework import DiagramBuilder
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-N", "--trials",
+                    type=int,
+                    help="Number of trials to run.",
+                    default=5)
+parser.add_argument("-T", "--duration",
+                    type=float,
+                    help="Duration to run each sim.",
+                    default=4.0)
+args = parser.parse_args()
+
+
+builder = DiagramBuilder()
+
+plant = builder.AddSystem(Quadrotor2D())
+visualizer = builder.AddSystem(Quadrotor2DVisualizer())
+builder.Connect(plant.get_output_port(0), visualizer.get_input_port(0))
+
+diagram = builder.Build()
+
+simulator = Simulator(diagram)
+simulator.set_target_realtime_rate(1.0)
+context = simulator.get_mutable_context()
+
+'''
+for i in range(args.trials):
+    context.set_time(0.)
+    context.SetContinuousState(np.random.randn(6,))
+    simulator.Initialize()
+    simulator.StepTo(args.duration)
+'''
