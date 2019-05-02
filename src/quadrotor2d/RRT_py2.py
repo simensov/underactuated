@@ -9,6 +9,8 @@ from check_path import check_path
 
 from support import *
 
+plotting = False
+
 def rrt(bounds, environment, start_pose, radius, end_region):
     '''
     - bounds: (minx, miny, maxx, maxy) tuple over region
@@ -27,9 +29,10 @@ def rrt(bounds, environment, start_pose, radius, end_region):
     goalPath = Path(SearchNode(start_pose)) # for initialization in case of no path found
     
     # Draw the environment (with its obstacles) and with the start node + end region
-    ax = plot_environment(environment,bounds)
-    plot_poly(ax, Point(start_pose).buffer(radius, resolution=3),'blue')
-    plot_poly(ax, end_region,'red', alpha=0.2)
+    if plotting:
+        ax = plot_environment(environment,bounds)
+        plot_poly(ax, Point(start_pose).buffer(radius, resolution=3),'blue')
+        plot_poly(ax, end_region,'red', alpha=0.2)
     
     for i in range(10000):  # random high number
         # this range must be evaluated according to size of problem. RRT do not ensure any solution paths
@@ -47,7 +50,7 @@ def rrt(bounds, environment, start_pose, radius, end_region):
         --- If not visited before (avoid cycle) and no obstacles are in the path: add to tree
         '''
         
-        sampling_rate = 10
+        sampling_rate = 12
         if not(i % sampling_rate):
             node_rand = end_region.centroid.coords[0]
 
@@ -69,7 +72,8 @@ def rrt(bounds, environment, start_pose, radius, end_region):
                 # Plot non-colliding edge to show all searched nodes
                 nodes.append(node_steered.state)
                 graph.add_edge(node_nearest,node_steered,node_dist)
-                if(True):
+
+                if plotting:
                     line = LineString([node_nearest.state,node_steered.state])
                     plot_line_mine(ax, line)
 
@@ -87,7 +91,7 @@ def rrt(bounds, environment, start_pose, radius, end_region):
     noOfNodesInSol = len(goalPath.path); 
     pathLength = goalPath.cost
 
-    if True:
+    if plotting:
         for i in range(noOfNodesInSol-1):
             # Draw goal path
             line = LineString([goalPath.path[i], goalPath.path[i+1]])
@@ -97,10 +101,10 @@ def rrt(bounds, environment, start_pose, radius, end_region):
             expanded_line = line.buffer(radius, resolution=3)
             plot_poly(ax, expanded_line, 'green', alpha=0.2)
             
-        # plotting last node in goalPath and setting title to format in task
-        plot_poly(ax, Point(goalPath.path[-1]).buffer(radius, resolution=3),'blue')
-        titleString = "Nodes total / in solution path: %s/ %s \nPath length: %0.3f"
-        ax.set_title(titleString % (noOfTotalNodes,noOfNodesInSol,pathLength))
+            # plotting last node in goalPath and setting title to format in task
+            plot_poly(ax, Point(goalPath.path[-1]).buffer(radius, resolution=3),'blue')
+            titleString = "Nodes total / in solution path: %s/ %s \nPath length: %0.3f"
+            ax.set_title(titleString % (noOfTotalNodes,noOfNodesInSol,pathLength))
         
     return goalPath.path
 

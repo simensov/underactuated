@@ -22,7 +22,7 @@ def plot_environment(env, bounds=None, figsize=None):
         if height > 5:
             width, height = (maxx-minx)*max_height/(maxy-miny), max_height
         figsize = (width, height)
-    print(figsize)
+    #print(figsize)
     f = plt.figure(figsize=figsize)
     ax = f.add_subplot(111)
     for i, obs in enumerate(env.obstacles):
@@ -92,21 +92,22 @@ class Environment:
     def parse_yaml_obstacles(self, obstacles):
         self.obstacles = []
         self.obstacles_map = {}
-        for name, description in obstacles.items():
-            # Double underscore not allowed in region names.
-            if name.find("__") != -1:
-                raise Exception("Names cannot contain double underscores.")
-            if description['shape'] == 'rectangle':
-                parsed = self.parse_rectangle(name, description)
-            elif description['shape'] == 'polygon':
-                parsed = self.parse_polygon(name, description)
-            else:
-                raise Exception("not a rectangle")
-            if not parsed.is_valid:
-                raise Exception("%s is not valid!"%name)
-            self.obstacles.append(parsed)
-            self.obstacles_map[name] = parsed
-        self.expanded_obstacles = [obs.buffer(0.75/2, resolution=2) for obs in self.obstacles]
+        if obstacles is not None:
+            for name, description in obstacles.items():
+                # Double underscore not allowed in region names.
+                if name.find("__") != -1:
+                    raise Exception("Names cannot contain double underscores.")
+                if description['shape'] == 'rectangle':
+                    parsed = self.parse_rectangle(name, description)
+                elif description['shape'] == 'polygon':
+                    parsed = self.parse_polygon(name, description)
+                else:
+                    raise Exception("not a rectangle")
+                if not parsed.is_valid:
+                    raise Exception("%s is not valid!"%name)
+                self.obstacles.append(parsed)
+                self.obstacles_map[name] = parsed
+            self.expanded_obstacles = [obs.buffer(0.75/2, resolution=2) for obs in self.obstacles]
 
     
     def parse_rectangle(self, name, description):
