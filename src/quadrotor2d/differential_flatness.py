@@ -14,8 +14,8 @@ import time
 
 # practical booleans for printing when doing wuick checks
 plotDrone = True
-plotPath = False
-plotObstacles = False
+plotPath = True
+plotObstacles = True
 
 ###
 ### Main code, building on 
@@ -148,7 +148,7 @@ if(True):
 
    
     if True:
-        # For some reason the solver crashes if I remove this
+        # For some reason the solver crashes if I remove this part??
         k = 0
         t = zpp.prog.NewContinuousVariables(1, "t_%d" % k)
         t_over_time = t
@@ -255,11 +255,11 @@ if(True):
           x = zpp.eval(t)
           xddot = zpp.eval(t, 2)
           theta = np.arctan2(-xddot[0], (xddot[1] + 9.81))
-          print theta
           v = Quadrotor2DVisualizer(ax=ax)
           context = v.CreateDefaultContext()
           context.FixInputPort(0, [x[0], x[1], theta, 0, 0, 0])
           v.draw(context)
+          
 
     # Draw the actual obstacles from given environment on quadcopter plot
     if plotObstacles:
